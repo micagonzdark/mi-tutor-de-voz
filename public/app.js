@@ -227,7 +227,7 @@ Respondés con frases cortas y naturales, como en una conversación real.`;
     await pc.setLocalDescription(offer);
 
     const sdpRes = await fetch(
-      "https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17",
+      "https://api.openai.com/v1/realtime/calls",
       {
         method: "POST",
         headers: { Authorization: `Bearer ${ephemeralKey}`, "Content-Type": "application/sdp" },
