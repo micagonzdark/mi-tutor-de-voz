@@ -209,14 +209,7 @@ Respondés con frases cortas y naturales, como en una conversación real.`;
         type: "session.update",
         session: {
           type: "realtime",
-          instructions: TUTOR_PROMPT,
-          input_audio_transcription: { model: "whisper-1" },
-          turn_detection: {
-            type: "server_vad",
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 600,
-          }
+          instructions: TUTOR_PROMPT
         }
       }));
     };
