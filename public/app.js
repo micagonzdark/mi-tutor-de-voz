@@ -164,8 +164,8 @@ async function connect() {
     }
 
     const session = await sessionRes.json();
-    const ephemeralKey = session.client_secret?.value;
-    if (!ephemeralKey) throw new Error("El servidor no devolvió un token válido");
+    const ephemeralKey = session.client_secret?.value || session.client_secret || session.value;
+    if (!ephemeralKey) throw new Error("El servidor no devolvió un token válido. Respuesta: " + JSON.stringify(session));
 
     // Crear conexión WebRTC
     setStatus("Conectando con la IA...", "");
