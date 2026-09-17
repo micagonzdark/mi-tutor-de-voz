@@ -60,6 +60,7 @@ app.get("/session", async (req, res) => {
         },
         body: JSON.stringify({
           session: {
+            type: "realtime",
             model: "gpt-4o-realtime-preview-2024-12-17"
           }
         }),
