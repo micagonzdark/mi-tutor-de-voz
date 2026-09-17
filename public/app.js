@@ -1,41 +1,108 @@
 // ─────────────────────────────────────────────────────────────
 // Tutor de Voz con IA — Cliente WebRTC
-// Conecta con la OpenAI Realtime API usando un token efímero
-// que el servidor genera por nosotros (la API key nunca llega aquí)
 // ─────────────────────────────────────────────────────────────
 
-let pc = null;          // RTCPeerConnection
-let dc = null;          // DataChannel para eventos JSON
-let audioEl = null;     // Elemento de audio para la voz de la IA
-let partialUserMsg = null;  // Mensaje parcial del usuario (mientras habla)
-let partialAiMsg = null;    // Mensaje parcial de la IA (mientras responde)
+const KEY_STORAGE = "tutor_openai_key";
 
-// ── UI helpers ──────────────────────────────────────────────
-const orb        = document.getElementById("orb");
-const statusEl   = document.getElementById("status");
-const transcript = document.getElementById("transcript");
-const connectBtn = document.getElementById("connect-btn");
-const disconnBtn = document.getElementById("disconnect-btn");
-const errorBox   = document.getElementById("error-box");
+let pc = null;
+let dc = null;
+let audioEl = null;
+let partialUserMsg = null;
+let partialAiMsg = null;
 
+// ── Elementos del DOM ────────────────────────────────────────
+const setupScreen = document.getElementById("setup-screen");
+const appScreen   = document.getElementById("app-screen");
+const orb         = document.getElementById("orb");
+const statusEl    = document.getElementById("status");
+const transcript  = document.getElementById("transcript");
+const connectBtn  = document.getElementById("connect-btn");
+const disconnBtn  = document.getElementById("disconnect-btn");
+const errorBox    = document.getElementById("error-box");
+
+// ── Al cargar la página ──────────────────────────────────────
+window.addEventListener("DOMContentLoaded", async () => {
+  // Primero preguntamos al servidor si ya tiene la key (via .env)
+  try {
+    const cfg = await fetch("/config").then(r => r.json());
+    if (cfg.serverHasKey) {
+      // El servidor tiene la clave — vamos directo a la app
+      showApp();
+      return;
+    }
+  } catch {}
+
+  // Si el usuario ya guardó la clave en el navegador, también vamos directo
+  const saved = localStorage.getItem(KEY_STORAGE);
+  if (saved && saved.startsWith("sk-")) {
+    showApp();
+  } else {
+    showSetup();
+  }
+});
+
+// ── Setup screen ─────────────────────────────────────────────
+function showSetup() {
+  setupScreen.style.display = "flex";
+  appScreen.style.display   = "none";
+}
+
+function showApp() {
+  setupScreen.style.display = "none";
+  appScreen.style.display   = "flex";
+}
+
+function toggleKeyVisibility() {
+  const input = document.getElementById("api-key-input");
+  const btn   = document.getElementById("toggle-key-btn");
+  if (input.type === "password") {
+    input.type = "text";
+    btn.textContent = "🙈";
+  } else {
+    input.type = "password";
+    btn.textContent = "👁️";
+  }
+}
+
+function saveKey() {
+  const input = document.getElementById("api-key-input");
+  const key = input.value.trim();
+
+  if (!key || !key.startsWith("sk-")) {
+    input.style.borderColor = "#f87171";
+    input.placeholder = "La clave debe empezar con sk-";
+    setTimeout(() => {
+      input.style.borderColor = "";
+      input.placeholder = "sk-proj-...";
+    }, 2500);
+    return;
+  }
+
+  localStorage.setItem(KEY_STORAGE, key);
+  input.value = "";
+  showApp();
+}
+
+function changeKey() {
+  disconnect();
+  localStorage.removeItem(KEY_STORAGE);
+  document.getElementById("api-key-input").value = "";
+  showSetup();
+}
+
+// Permite guardar la clave con Enter
+document.getElementById("api-key-input")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveKey();
+});
+
+// ── UI helpers ───────────────────────────────────────────────
 function setStatus(text, type = "") {
   statusEl.className = "status " + type;
   statusEl.innerHTML = `<span class="dot"></span>${text}`;
 }
-
-function setOrbState(state) {
-  orb.className = "orb " + state;
-}
-
-function showError(html) {
-  errorBox.style.display = "block";
-  errorBox.innerHTML = html;
-}
-
-function clearError() {
-  errorBox.style.display = "none";
-  errorBox.innerHTML = "";
-}
+function setOrbState(state) { orb.className = "orb " + state; }
+function showError(html) { errorBox.style.display = "block"; errorBox.innerHTML = html; }
+function clearError()    { errorBox.style.display = "none";  errorBox.innerHTML = ""; }
 
 function addMessage(role, text, partial = false) {
   const div = document.createElement("div");
@@ -45,7 +112,6 @@ function addMessage(role, text, partial = false) {
   transcript.scrollTop = transcript.scrollHeight;
   return div;
 }
-
 function updateMessage(el, text) {
   el.textContent = text;
   transcript.scrollTop = transcript.scrollHeight;
@@ -59,8 +125,12 @@ async function connect() {
   setOrbState("connecting");
 
   try {
-    // 1. Pedimos el token efímero al servidor
-    const sessionRes = await fetch("/session");
+    // Enviamos la clave guardada en localStorage (si el servidor no la tiene)
+    const savedKey = localStorage.getItem(KEY_STORAGE);
+    const headers  = savedKey ? { "x-api-key": savedKey } : {};
+
+    const sessionRes = await fetch("/session", { headers });
+
     if (!sessionRes.ok) {
       const err = await sessionRes.json();
       if (err.error === "no_realtime_access") {
@@ -68,18 +138,20 @@ async function connect() {
           <strong>⚠️ Sin acceso a la Realtime API</strong><br><br>
           Tu clave de OpenAI no tiene acceso a la Realtime API todavía.<br>
           <strong>Qué hacer:</strong>
-          <ol style="margin:0.6rem 0 0 1.2rem">
-            <li>Entrá a <a href="https://platform.openai.com/settings/billing" target="_blank" style="color:#fca5a5">platform.openai.com/settings/billing</a></li>
-            <li>Verificá que tengas crédito cargado (mínimo ~\$5)</li>
-            <li>Buscá en el catálogo de modelos <em>gpt-4o-realtime-preview</em></li>
-          </ol><br>
-          Si no tenés acceso, avisame y activamos el <strong>Plan B</strong> (Whisper + TTS).
+          <ol style="margin:.6rem 0 0 1.2rem">
+            <li>Entrá a <a href="https://platform.openai.com/settings/billing" target="_blank" style="color:#fca5a5">platform.openai.com → Billing</a></li>
+            <li>Verificá que tengas crédito cargado (mínimo \$5)</li>
+            <li>Confirmá acceso al modelo <em>gpt-4o-realtime-preview</em></li>
+          </ol>
         `);
         setStatus("Sin acceso a Realtime API", "error");
-        setOrbState("");
+      } else if (err.error === "no_key") {
+        showError(`<strong>❌ Falta la clave</strong><br>Hacé clic en "Cambiar clave" y volvé a ingresarla.`);
+        setStatus("Sin clave configurada", "error");
       } else {
         throw new Error(err.message || "Error al crear sesión");
       }
+      setOrbState("");
       connectBtn.disabled = false;
       return;
     }
@@ -88,11 +160,10 @@ async function connect() {
     const ephemeralKey = session.client_secret?.value;
     if (!ephemeralKey) throw new Error("El servidor no devolvió un token válido");
 
-    // 2. Creamos la conexión WebRTC
+    // Crear conexión WebRTC
     setStatus("Conectando con la IA...", "");
     pc = new RTCPeerConnection();
 
-    // 3. Elemento de audio para recibir la voz de la IA
     audioEl = document.createElement("audio");
     audioEl.autoplay = true;
     pc.ontrack = (e) => {
@@ -100,26 +171,26 @@ async function connect() {
       setOrbState("speaking");
     };
 
-    // 4. Capturamos el micrófono
+    // Capturar micrófono
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (micErr) {
+    } catch {
       throw new Error("No se pudo acceder al micrófono. Verificá los permisos del navegador.");
     }
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
-    // 5. DataChannel para eventos JSON (transcripciones, etc.)
+    // DataChannel para eventos JSON
     dc = pc.createDataChannel("oai-events");
     dc.onopen = () => {
-      setStatus("Conectado — hablá cuando quieras!", "connected");
+      setStatus("Conectado — hablá cuando quieras 🎙️", "connected");
       setOrbState("listening");
       connectBtn.style.display = "none";
       disconnBtn.style.display = "inline-block";
     };
     dc.onmessage = handleEvent;
 
-    // 6. SDP offer → OpenAI → SDP answer
+    // SDP handshake con OpenAI
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
@@ -127,10 +198,7 @@ async function connect() {
       "https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17",
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${ephemeralKey}`,
-          "Content-Type": "application/sdp",
-        },
+        headers: { Authorization: `Bearer ${ephemeralKey}`, "Content-Type": "application/sdp" },
         body: offer.sdp,
       }
     );
@@ -140,9 +208,7 @@ async function connect() {
       throw new Error(`OpenAI rechazó la conexión (${sdpRes.status}): ${text}`);
     }
 
-    const answerSdp = await sdpRes.text();
-    await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
+    await pc.setRemoteDescription({ type: "answer", sdp: await sdpRes.text() });
     setStatus("Estableciendo audio...", "");
 
   } catch (err) {
@@ -155,14 +221,17 @@ async function connect() {
   }
 }
 
-// ── Manejo de eventos del DataChannel ───────────────────────
+// ── Eventos del DataChannel ──────────────────────────────────
 function handleEvent(e) {
   let event;
   try { event = JSON.parse(e.data); } catch { return; }
 
   switch (event.type) {
+    case "input_audio_buffer.speech_started":
+      setOrbState("listening");
+      partialUserMsg = addMessage("user", "...", true);
+      break;
 
-    // El usuario terminó de hablar — transcripción final
     case "conversation.item.input_audio_transcription.completed":
       if (partialUserMsg) {
         updateMessage(partialUserMsg, event.transcript);
@@ -174,13 +243,6 @@ function handleEvent(e) {
       setOrbState("listening");
       break;
 
-    // Transcripción parcial del usuario (en tiempo real)
-    case "input_audio_buffer.speech_started":
-      setOrbState("listening");
-      partialUserMsg = addMessage("user", "...", true);
-      break;
-
-    // La IA empieza a hablar
     case "response.audio_transcript.delta":
       if (!partialAiMsg) {
         partialAiMsg = addMessage("ai", event.delta, true);
@@ -190,7 +252,6 @@ function handleEvent(e) {
       setOrbState("speaking");
       break;
 
-    // La IA terminó de hablar
     case "response.audio_transcript.done":
       if (partialAiMsg) {
         updateMessage(partialAiMsg, event.transcript);
@@ -200,7 +261,6 @@ function handleEvent(e) {
       setOrbState("listening");
       break;
 
-    // Error de la API
     case "error":
       console.error("OpenAI Realtime error:", event.error);
       showError(`<strong>Error de OpenAI:</strong> ${event.error?.message || JSON.stringify(event.error)}`);
@@ -209,23 +269,19 @@ function handleEvent(e) {
 }
 
 // ── Desconexión ──────────────────────────────────────────────
-function disconnect() {
-  cleanup(true);
-}
+function disconnect() { cleanup(true); }
 
 function cleanup(showMsg = true) {
-  if (dc) { try { dc.close(); } catch {} dc = null; }
-  if (pc) { try { pc.close(); } catch {} pc = null; }
+  if (dc)      { try { dc.close();  } catch {} dc = null; }
+  if (pc)      { try { pc.close();  } catch {} pc = null; }
   if (audioEl) { audioEl.srcObject = null; audioEl = null; }
   partialUserMsg = null;
-  partialAiMsg = null;
+  partialAiMsg   = null;
 
   setOrbState("");
   connectBtn.disabled = false;
   connectBtn.style.display = "inline-block";
   disconnBtn.style.display = "none";
 
-  if (showMsg) {
-    setStatus("Sesión terminada — podés empezar una nueva", "");
-  }
+  if (showMsg) setStatus("Sesión terminada — podés empezar una nueva", "");
 }

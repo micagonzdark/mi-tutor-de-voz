@@ -11,17 +11,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 // ─────────────────────────────────────────────────────────────
-// Verificación de la API key al arrancar
-// ─────────────────────────────────────────────────────────────
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey || apiKey === "sk-proj-TU_CLAVE_AQUI") {
-  console.error("\n❌  ERROR: No encontré tu clave de OpenAI.");
-  console.error("   Creá un archivo .env en la raíz del proyecto");
-  console.error("   con el contenido de .env.example y tu clave real.\n");
-  process.exit(1);
-}
-
-// ─────────────────────────────────────────────────────────────
 // Prompt del tutor — editá esto para personalizar el tutor
 // ─────────────────────────────────────────────────────────────
 const TUTOR_PROMPT = `Sos un tutor de inglés conversacional amigable y paciente.
@@ -35,10 +24,31 @@ Ajustás la dificultad según cómo habla el usuario.
 Respondés con frases cortas y naturales, como en una conversación real.`;
 
 // ─────────────────────────────────────────────────────────────
-// Endpoint: genera token efímero para el cliente
-// La API key NUNCA sale del servidor.
+// /config — le dice al frontend si el servidor ya tiene una key
+// (para decidir si mostrar la pantalla de configuración o no)
+// ─────────────────────────────────────────────────────────────
+const envKey = process.env.OPENAI_API_KEY;
+const serverHasKey = envKey && envKey !== "sk-proj-TU_CLAVE_AQUI";
+
+app.get("/config", (req, res) => {
+  res.json({ serverHasKey: !!serverHasKey });
+});
+
+// ─────────────────────────────────────────────────────────────
+// /session — genera token efímero para el cliente
+// Usa la key del .env si existe; si no, la acepta del browser
+// vía el header x-api-key (guardada en localStorage del usuario)
 // ─────────────────────────────────────────────────────────────
 app.get("/session", async (req, res) => {
+  const apiKey = serverHasKey ? envKey : req.headers["x-api-key"];
+
+  if (!apiKey) {
+    return res.status(401).json({
+      error: "no_key",
+      message: "No hay clave de API configurada.",
+    });
+  }
+
   try {
     const response = await fetch(
       "https://api.openai.com/v1/realtime/sessions",
@@ -65,16 +75,15 @@ app.get("/session", async (req, res) => {
 
     if (!response.ok) {
       const error = await response.json();
-      // Si no tiene acceso a la Realtime API, devuelve un error claro
       if (response.status === 403 || response.status === 401) {
         return res.status(403).json({
           error: "no_realtime_access",
           message:
-            "Tu clave de OpenAI no tiene acceso a la Realtime API. Verificá que tengas billing activo en platform.openai.com",
+            "La clave de OpenAI no tiene acceso a la Realtime API. Verificá que tengas billing activo en platform.openai.com",
           details: error,
         });
       }
-      return res.status(response.status).json({ error: error });
+      return res.status(response.status).json({ error });
     }
 
     const data = await response.json();
@@ -85,9 +94,7 @@ app.get("/session", async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
 // Ruta fallback — sirve el frontend
-// ─────────────────────────────────────────────────────────────
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -95,5 +102,7 @@ app.get("*", (req, res) => {
 app.listen(PORT, () => {
   console.log("\n🎤  Tutor de voz con IA listo!");
   console.log(`   Abrí tu navegador en: http://localhost:${PORT}`);
-  console.log("   Usá Chrome o Edge para mejor soporte de micrófono.\n");
+  if (!serverHasKey) {
+    console.log("   (La clave de OpenAI se ingresa desde el navegador)\n");
+  }
 });
