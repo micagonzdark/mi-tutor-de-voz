@@ -194,6 +194,31 @@ async function connect() {
       setOrbState("listening");
       connectBtn.style.display = "none";
       disconnBtn.style.display = "inline-block";
+
+      const TUTOR_PROMPT = `Sos un tutor de inglés conversacional amigable y paciente.
+Hablás siempre en inglés para practicar, pero si el usuario no entiende algo, 
+podés dar una explicación muy breve en español entre paréntesis.
+Corregís errores gramaticales con amabilidad, sin interrumpir la conversación:
+después de que el usuario termina de hablar, repetís la frase correctamente
+de manera natural (ej: "Right! As you mentioned...") y continuás.
+Hacés preguntas para mantener la charla activa y entretenida.
+Ajustás la dificultad según cómo habla el usuario.
+Respondés con frases cortas y naturales, como en una conversación real.`;
+
+      dc.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          instructions: TUTOR_PROMPT,
+          voice: "alloy",
+          input_audio_transcription: { model: "whisper-1" },
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 600,
+          }
+        }
+      }));
     };
     dc.onmessage = handleEvent;
 
