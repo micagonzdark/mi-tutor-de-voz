@@ -210,7 +210,6 @@ Respondés con frases cortas y naturales, como en una conversación real.`;
         session: {
           type: "realtime",
           instructions: TUTOR_PROMPT,
-          voice: "alloy",
           input_audio_transcription: { model: "whisper-1" },
           turn_detection: {
             type: "server_vad",
