@@ -211,7 +211,8 @@ Comportamiento clave:
           audio: {
             input: {
               transcription: {
-                model: "gpt-4o-transcribe"
+                model: "whisper-1",
+                language: "en"
               }
             },
             output: {
