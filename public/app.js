@@ -149,7 +149,14 @@ async function connect() {
         showError(`<strong>❌ Falta la clave</strong><br>Hacé clic en "Cambiar clave" y volvé a ingresarla.`);
         setStatus("Sin clave configurada", "error");
       } else {
-        throw new Error(err.message || "Error al crear sesión");
+        // Intentamos sacar el error real que nos manda OpenAI o el backend
+        let errorMsg = err.message || err.details;
+        if (err.error && typeof err.error === 'object' && err.error.error) {
+           errorMsg = err.error.error.message;
+        } else if (typeof err.error === 'string') {
+           errorMsg = err.error + (err.details ? ": " + JSON.stringify(err.details) : "");
+        }
+        throw new Error(errorMsg || JSON.stringify(err) || "Error al crear sesión");
       }
       setOrbState("");
       connectBtn.disabled = false;
