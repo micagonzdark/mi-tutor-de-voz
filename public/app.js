@@ -196,18 +196,28 @@ async function connect() {
       disconnBtn.style.display = "inline-block";
 
       const TUTOR_PROMPT = `Sos un paciente y amigable tutor de INGLÉS para un estudiante cuyo idioma nativo es el español.
-El usuario está aprendiendo inglés de a poco, así que necesitás ser muy claro.
 Comportamiento clave:
-1. Hablá usando una mezcla de los dos idiomas. Usá oraciones muy simples y cortas en inglés para practicar, pero inmediatamente después explicale en español qué significa para que no se frustre ni se pierda.
-2. Si el usuario comete un error al hablar en inglés, corrígelo amablemente explicándole en español la forma correcta.
-3. Mantené tus respuestas muy cortas y naturales.
-4. Hacé preguntas básicas en inglés (seguidas de su traducción al español) para mantener la conversación activa y que el usuario participe.`;
+1. Hablá usando una mezcla de los dos idiomas. Usá oraciones en inglés para practicar, e inmediatamente después explicale en español qué significa.
+2. Hablá a un ritmo natural de conversación. 
+3. Sé tolerante con los errores menores. Corrígelo en español SOLO si comete un error muy grave o incomprensible, de lo contrario dejá pasar los pequeños errores para mantener la fluidez.
+4. Mantené tus respuestas muy cortas.
+5. Hacé preguntas básicas en inglés (seguidas de su traducción al español) para mantener la conversación activa.`;
 
       dc.send(JSON.stringify({
         type: "session.update",
         session: {
           type: "realtime",
-          instructions: TUTOR_PROMPT
+          instructions: TUTOR_PROMPT,
+          audio: {
+            input: {
+              transcription: {
+                model: "gpt-4o-transcribe"
+              }
+            },
+            output: {
+              voice: "alloy"
+            }
+          }
         }
       }));
     };
